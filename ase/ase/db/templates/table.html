@@ -1,0 +1,59 @@
+{% extends "layout.html" %}
+{% block title %}Browse ASE database{% endblock %}
+{% block head %}
+{{ super() }}
+<script src="{{ url_for('static', filename='table.js') }}"></script>
+{% endblock %}
+{% block content %}
+<form action="/">
+Search:
+<input type=hidden name=x value="{{ tid }}">
+<input type=text name=query value="{{ query }}" onchange="this.form.submit()">
+<br>
+Rows: {{ t.rows|length }}
+Limit:
+<input type=text name=limit value={{ limit }} onchange="this.form.submit()">
+</form>
+Download:
+<a href="/sqlite?x={{ tid }}">db</a>,
+<a href="/json?x={{ tid }}">json</a>,
+<a href="/csv?x={{ tid }}">csv</a>
+<br>
+Add/remove key-column:
+{% for key in t.keys -%}
+<a href="/?x={{ tid }}&amp;toggle={{ key }}">{{ key }}</a>{% if not loop.last %},{% endif %}
+{% endfor %}
+
+<table id=rows>
+    <tr>
+{%- for c in t.columns %}
+<th>
+{% if sort == c %}&#x2193; {% elif sort == '-' + c %}&#x2191; {% endif -%}
+<a href="/?x={{ tid }}&amp;sort={{ c }}">{{ c }}</a>
+<a href="/?x={{ tid }}&amp;toggle={{ c }}">&#x2715;</a>
+</th>
+{%- endfor %}
+    </tr>
+{% for row in t.rows -%}
+    <tr class="click {{ loop.cycle('even', 'odd') }}"
+        onclick="open_row(this, {{ row.dct.id }}, {{ tid }});">
+    {%- autoescape false -%}
+    {%- for s in row.strings -%}
+        {% if t.right[loop.index0] -%}
+        <td class=right>{{ s }}</td>
+        {% else %}
+        <td>{{ s }}</td>
+        {% endif %}
+    {% endfor %}
+    {% endautoescape %}
+    </tr>
+    {% set dct=row.dct %}
+    {% set id=dct.id %}
+    {% if id in opened %}
+    {% include "more.html" %}
+    {% endif %}
+{% endfor %}
+</table>
+Keywords found: {{ t.keywords|join(', ') }}
+<br>
+{% endblock content %}

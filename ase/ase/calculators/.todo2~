@@ -1,0 +1,245 @@
+{
+  "title": "",
+  "tasks": [
+    {
+      "text": "NWChem",
+      "priority": "medium",
+      "creation": 1412865281,
+      "completion": 0,
+      "tasks": [
+        {
+          "text": "modify writing of atomic coordinates, possibly into external file",
+          "priority": "medium",
+          "creation": 1412865404,
+          "completion": 0,
+          "tasks": []
+        },
+        {
+          "text": "add to default parameters keywords that will trigger the calculation of atomic partial charges",
+          "priority": "medium",
+          "creation": 1412865464,
+          "completion": 0,
+          "tasks": []
+        },
+        {
+          "text": "add methods to read various partial charge outputs",
+          "priority": "medium",
+          "creation": 1412865483,
+          "completion": 0,
+          "tasks": []
+        },
+        {
+          "text": "ensure that name of calculation files is unique, so that paralllelization over subsystems can be employed",
+          "priority": "medium",
+          "creation": 1413272676,
+          "completion": 0,
+          "tasks": []
+        },
+        {
+          "text": "write BQ file",
+          "priority": "medium",
+          "creation": 1413280346,
+          "completion": 0,
+          "tasks": []
+        },
+        {
+          "text": "make sure to keep database files and vectors information for quicker SCF",
+          "priority": "medium",
+          "creation": 1413280417,
+          "completion": 0,
+          "tasks": []
+        },
+        {
+          "text": "add 'charges' to implemented_properties",
+          "priority": "medium",
+          "creation": 1413280814,
+          "completion": 0,
+          "tasks": []
+        },
+        {
+          "text": "add charges to properties of atoms object, although it is in principle there, it is not set by default",
+          "priority": "medium",
+          "creation": 1413281536,
+          "completion": 0,
+          "tasks": []
+        },
+        {
+          "text": "check whether inclusion of point charges does make no difference for NWChem RESP fits at all or if it is just the RESP procedure that is sooooo robust (or includes the bq's in its ESP fit",
+          "priority": "medium",
+          "creation": 1413297429,
+          "completion": 0,
+          "tasks": []
+        },
+        {
+          "text": "Add parameter to NWChem calculator to control number of iterations",
+          "priority": "medium",
+          "creation": 1413471444,
+          "completion": 0,
+          "tasks": []
+        },
+        {
+          "text": "adapt nwchem calculator to also handle open-shell species in DFT",
+          "priority": "medium",
+          "creation": 1414069324,
+          "completion": 0,
+          "tasks": []
+        },
+        {
+          "text": "make sure that nwchem calculator really only calculates the energies and not the forces if we ask for energies",
+          "priority": "medium",
+          "creation": 1414088050,
+          "completion": 0,
+          "tasks": []
+        },
+        {
+          "text": "make nwchem calculator calculate only energies if that is what we have asked for",
+          "priority": "medium",
+          "creation": 1414088989,
+          "completion": 0,
+          "tasks": []
+        }
+      ]
+    },
+    {
+      "text": "GEBF",
+      "priority": "medium",
+      "creation": 1412865541,
+      "completion": 0,
+      "tasks": [
+        {
+          "text": "method for convergence check based on energy and point charges (how to properly define convergence region aso)",
+          "priority": "medium",
+          "creation": 1412865573,
+          "completion": 0,
+          "tasks": []
+        },
+        {
+          "text": "update atoms object and take care of correct integer assignment",
+          "priority": "medium",
+          "creation": 1412865619,
+          "completion": 0,
+          "tasks": []
+        },
+        {
+          "text": "use atoms.charges to save charges obtained from a calculation",
+          "priority": "medium",
+          "creation": 1412865635,
+          "completion": 0,
+          "tasks": []
+        },
+        {
+          "text": "correct gradients",
+          "priority": "medium",
+          "creation": 1412865645,
+          "completion": 0,
+          "tasks": []
+        },
+        {
+          "text": "double-counting problem for all the MM energies, plus double-counting of QM-MM interaction between two molecules",
+          "priority": "medium",
+          "creation": 1412865671,
+          "completion": 0,
+          "tasks": []
+        },
+        {
+          "text": "do we need anything to handle intramolecular forces? nah, it should all be more or less QM",
+          "priority": "medium",
+          "creation": 1412865704,
+          "completion": 0,
+          "tasks": []
+        },
+        {
+          "text": "smeared charges for effective Pauli repulsion",
+          "priority": "medium",
+          "creation": 1412865718,
+          "completion": 0,
+          "tasks": []
+        },
+        {
+          "text": "do put atoms in to GEBF (self), but rather pass a copy to the __init__ and modify that; and no modification of self.atoms",
+          "priority": "medium",
+          "creation": 1413297780,
+          "completion": 0,
+          "tasks": []
+        },
+        {
+          "text": "check which charges we should use for self-energy correction, current RESP charges with all the others should be correct",
+          "priority": "medium",
+          "creation": 1413361194,
+          "completion": 0,
+          "tasks": []
+        },
+        {
+          "text": "what to do if a new derivative subsystem is the same as one of the original sys's? update coefficient?!",
+          "priority": "medium",
+          "creation": 1413467424,
+          "completion": 0,
+          "tasks": []
+        },
+        {
+          "text": "what about single-molecule contributions???",
+          "priority": "medium",
+          "creation": 1413467454,
+          "completion": 0,
+          "tasks": []
+        },
+        {
+          "text": "We need to exclude small fragments, that are fully contained in bigger fragments, and figure out what to do with derived fragments that are equal to primitive fragments and further derived fragments",
+          "priority": "medium",
+          "creation": 1413470617,
+          "completion": 0,
+          "tasks": []
+        },
+        {
+          "text": "Make the whole think restartable by giving every bit of information if available to the __init__functions, including initial charges, fragments and so on",
+          "priority": "medium",
+          "creation": 1413471066,
+          "completion": 0,
+          "tasks": []
+        },
+        {
+          "text": "how to connect fragments? by distance from center of mass or by distance from each atom in fragment to all other atoms or center of masses of fragments",
+          "priority": "medium",
+          "creation": 1413898453,
+          "completion": 0,
+          "tasks": []
+        },
+        {
+          "text": "GEBF update of subsystems not completely working right now",
+          "priority": "medium",
+          "creation": 1414070121,
+          "completion": 0,
+          "tasks": []
+        },
+        {
+          "text": "adapt around solute calculator to also go around solute and otherwise within cutoff (i.e., overlapping domains)",
+          "priority": "medium",
+          "creation": 1414088963,
+          "completion": 0,
+          "tasks": []
+        },
+        {
+          "text": "non-equilibrium solvation + general solvation",
+          "priority": "medium",
+          "creation": 1414089005,
+          "completion": 0,
+          "tasks": []
+        },
+        {
+          "text": "make it so that we can do 'around_solute' and also bigger 'side-fragments' that don't overlap with solute",
+          "priority": "medium",
+          "creation": 1414319753,
+          "completion": 0,
+          "tasks": []
+        }
+      ]
+    },
+    {
+      "text": "for both calculators, check how to correctly set self.atoms and use atoms and then set_initial_charges",
+      "priority": "medium",
+      "creation": 1414002805,
+      "completion": 0,
+      "tasks": []
+    }
+  ]
+}

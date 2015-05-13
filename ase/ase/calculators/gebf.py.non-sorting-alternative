@@ -1,0 +1,962 @@
+"""Calculator for General Energy-based Fragmentation"""
+
+#FU| these imports are copied from the Calculator class
+import os
+import copy
+import subprocess
+from math import pi, sqrt
+#FU|
+#FUDO| we can now also substitute all the numpy crap by np.<method>
+
+import numpy as np
+
+from ase.calculators.calculator import Calculator, all_changes
+from sys import stdout, exit
+from os import system
+from ase.units import Ha, Bohr
+import ase.units as u
+from ase.io import write
+    #from future import printf
+from copy import deepcopy
+from ase.calculators.nwchem import NWChem
+from numpy import zeros, ones, append, array, transpose, savetxt, abs, pi, linalg
+
+    #maybe later we can make let it inherit from the Calculator base class
+class GEBF(Calculator):
+    """Initializes the General Energy-based Fragmentation object
+
+    Parameters:
+
+    atoms: atoms (object)
+
+    fragments: list of lists containing indices defining moleculesor generally fragments, can be optional and
+               molecular fragments will be generated based on the covalent radii
+               of the atoms in the atoms object
+
+               if a single number is provided it is used as a fudge factor for
+               the molecule generation
+    
+    gradients: boolean determining whether gradients are to be calculated
+
+    fullgrad: boolean determining whether fully correct gradients are to be
+              calculated or only the ones based on molecule by molecule embedding
+    """
+
+    #these are currently just the same as for NWChem except for the included bq
+    #    default_parameters = dict(
+    #        xc='LDA',
+    #        smearing=None,
+    #        charge=None,
+    #        task='gradient',
+    #        geometry='nocenter noautosym',
+    #        convergence={'energy': None,
+    #                     'density': None,
+    #                     'gradient': None,
+    #                     'lshift': None,
+    #                     # set lshift to 0.0 for nolevelshifting
+    #                     },
+    #        basis='3-21G',
+    #        basispar=None,
+    #        ecp=None,
+    #        so=None,
+    #        spinorbit=False,
+    #        odft=False,
+    #        bq=None,
+    #        raw='')  # additional outside of dft block control string
+    #
+
+    implemented_properties = ['energy', 'forces', 'charges']
+
+    #default_parameters = {'charge': 0,
+    #                      'method': 'hf',
+    #                      'basis': '6-31g*',
+    #                      'force': 'force'}
+
+    #def __init__(self, atoms, 
+    def __init__(self, atoms=None, molecules=False, fragments=None, gradients=False, fullgrad=False, subsyscalc=None, frgchg=None, frgmlt=None, around_solute=None, printlevel=0, cutoff=None, prisub=None, restart=None, ignore_bad_restart_file=False, label=os.curdir, **kwargs):
+        """Initializes calculator.
+        The idea is to either use pure molecular fragments or not.
+        If molecules is set to True fragments can still be read in, but are assumed to be molecules.
+        If molecules is True and fragments is none, molecular fragments will be generated.
+        If molecules is True and fragments is a float, molecular fragments will be generated with the value of float as fudge factor for molecule generation.
+
+        subsys calc is the calculator for each specific subsystem
+        prisub are optionally provided primary subsystems. If They are provided, they will not be changed/updated.
+        """
+
+    #FUDO| what about charged systems???? do we need to provide charges of each fragment?!?!?!?!?!
+    #FUDO| otherwise just set if self.charges is None\n self.charges=np.zeros(len(self.fragments), dtype='int')
+    #FUDO| and further down we need to incorporate that into the subsystem information
+
+        print 'label: ', label
+        print 'restart: ', restart
+    #FU| initialize superclass to get all its methods and so on
+        Calculator.__init__(self, restart, ignore_bad_restart_file,
+                            label, atoms, **kwargs)
+
+        self.molecules = molecules
+        #self.fragments = fragments
+        self.plvl = printlevel
+
+        self.subsyscalc = subsyscalc
+
+        #check if GEBF is implemented for the calculator attached to the atoms object
+        #also check if there is a caclulator object attached
+
+    #FU| that is probably the wrong way of doing it
+    #    self.atoms = atoms
+    #just for now, to make it work below
+    #is there an ASE function to get distance matrix?
+    #does that yield the same distance matrix than our method?
+
+        if self.subsyscalc is None:
+            print  "No subsys Calculator found, cannot continue"
+            exit ( 1 )
+
+        if not any(isinstance(self.subsyscalc, e) for e in [NWChem]):
+            print  "GEBF calculator is currently only supported with NWChem"
+            exit ( 1 )
+
+        #depending on the calculator at hand we need or don't the self-energy correction for the classical charges
+        #FUDO| check for other calculator, GAMESS-US does need it...
+        self.selfenercorr = True
+
+        if isinstance(self.subsyscalc, NWChem):
+            self.selfenercorr = False
+
+        if self.molecules and not fragments:
+
+            if fragments is None:
+                self.fudge = 1.0
+
+            elif isinstance(fragments, float):
+                self.fudge = fragments
+                
+            self.fragments = self.generate_molecules(fudge=self.fudge)
+
+        elif not self.molecules and not fragments:
+            print "The option to generate arbitrary non-molecular fragments is currently not implemented"
+            exit ( 1 )
+
+            #self.fragments = self.generate_fragments()
+
+        else:
+            self.fragments = fragments
+
+        self.prisub = prisub
+
+        if self.prisub is not None:
+            print 'Will use user-provided primary subsystems. These will not be changed under any circumstances (like MD)!!!'
+
+        self.cutoff = cutoff
+
+        if frgchg is not None:
+            self.frgchg = frgchg
+        else:
+            self.frgchg = np.zeros(len(self.fragments), dtype='int')
+
+        if frgmlt is not None:
+            self.frgmlt = frgmlt
+        else:
+            self.frgmlt = np.ones(len(self.fragments), dtype='int')
+
+        self.around_solute = around_solute
+#FUMPORTANT| FU| FUDO|
+#it is to note that the assignment of charges, multiplicities and so on should not be based on charges/multiplicities of single molecules
+#it does not work like that and should be changed
+#for our purpose it will work and suffice; and in general it will do so as long as we don't have overlapping fragments...
+        self.coeffs, self.subsys, self.subsyschg, self.subsysmlt = self.update_subsystems(cutoff=self.cutoff, prisub=self.prisub, frgchg=self.frgchg, frgmlt=self.frgmlt, around_solute=self.around_solute)
+
+        #self.subsyschg = self.get_subsystem_charges(frgchg=self.frgchg, subsys=self.subsys)
+        #self.subsysmlt = self.get_subsystem_multiplicities(frgmlt=self.frgmlt, subsys=self.subsys)
+
+        #FUDO| somehow save prisubs for later use in self.prisub (i.e., in update function)
+
+#FUDO this will currently not work, because here subsystems are already expressed as lists of atoms
+    def get_subsystem_charges(self, frgchg=None, subsys=None):
+        if frgchg is None:
+            print 'cannot calculate subsystem charges without fragment charges'
+            exit ( 1 )
+
+        if subsys is None:
+            print 'cannot calculate subsystem charges without subsystems'
+            exit ( 1 )
+
+        subsyschg = []
+
+        for sub in subsys:
+            tmp = 0
+            for frg in sub:
+                tmp += frgchg[frg]
+
+            subsyschg.append(tmp)
+
+        return subsyschg
+
+#FUDO| there is also a possibility to get_intial_magnetic_moments from calculator... just sayin'
+#FUDO this will currently not work, because here subsystems are already expressed as lists of atoms
+    def get_subsystem_multiplicities(self, frgmlt=None, subsys=None):
+        if frgmlt is None:
+            print 'cannot calculate subsystem multiplicities without fragment multiplicities'
+            exit ( 1 )
+
+        if subsys is None:
+            print 'cannot calculate subsystem charges without subsystems'
+            exit ( 1 )
+
+        subsysmlt = []
+
+        for sub in subsys:
+            nprd = 0
+            for frg in sub:
+                tmp = ( fgrmlt[frg] - 1 ) / 2.
+                nprd += tmp
+
+    #FUDO| check if this is correct (because of the integer conversion)
+    #FUDO| it is correct, but assumes high-spin configuration
+    #FUDO| maybe add possibility for low-spin configuration
+            subsysmlt.append(int(2*nprd+1))
+
+        return subsysmlt
+
+    def update_subsystems(self, cutoff=3.0, prisub=None, frgchg=None, frgmlt=None, around_solute=None):
+
+        if self.cutoff is None and self.prisub is None:
+            return self.generate_subsystems(frgchg=frgchg, frgmlt=frgmlt, around_solute=around_solute)
+        elif self.cutoff is None and self.prisub is not None:
+            return self.generate_subsystems(prisub=self.prisub, frgchg=frgchg, frgmlt=frgmlt, around_solute=around_solute)
+        elif self.cutoff is not None and self.prisub is None:
+            return self.generate_subsystems(cutoff=self.cutoff, frgchg=frgchg, frgmlt=frgmlt, around_solute=around_solute)
+        else:
+            return self.generate_subsystems(cutoff=self.cutoff, prisub=self.prisub, frgchg=frgchg, frgmlt=frgmlt, around_solute=around_solute)
+
+    def generate_molecules(self, fudge=1.0):
+        """Generate molecules based on distance comparison to covalent radii
+           Todo: add consistency check with database molecules
+        """
+
+        #we can steal this routine from CCUBE, it should be fairly easy to do
+
+        molecules = []
+
+        return molecules
+
+    def generate_primary_subsystems(self, cutoff=3.0, around_solute=None):
+        """Generate primary subsystems according to distance cutoff 
+           Currently only molecules are considered as basic building blocks, but extension to arbitrary
+           functional groups is straight forward. We then need to take care of capping atoms.
+           Further on, better distance search could be done, currently only checking for the center of mass of molecules.
+        """
+
+        frgs = self.fragments
+        coms = []
+
+        nfrg = len(frgs)
+
+    #calculate center of mass for each fragment
+        for frag in frgs:
+            tmp = self.atoms[frag].get_center_of_mass()
+            coms.append(tmp)
+
+        coms = array(coms)
+
+    #calculate distance between center of masses of each fragment
+
+        frgdst = zeros((nfrg, nfrg))
+
+        for i in range(nfrg):
+            for j in range(i+1, nfrg):
+                d = coms[i] - coms[j]
+                #FUDO| keep to minimum image convention here?
+                frgdst[i,j] = linalg.norm(d)
+                frgdst[j,i] = frgdst[i,j]
+
+    #here we do not exclude i == j, because that will always be included, unless the cutoff is <=0 (which it shan't be)
+    #FU| check here and introduce it another way for savety reasons
+    #FU| i.e., the commented version below
+    #check above and below loop, it all seems a bit fishy from and to where i and j run
+
+    #check which molecules are within range of cutoff from each fragment (i.e., construct fragment domain to later construct primitive subsystems)
+        prisub = []
+
+        eta = 0
+
+        if around_solute is None:
+            #FUDO| definitely need to improve the loop below!!!!
+            #FUDO| check if we can substitute the loop by: for i in range(nfrg):\n    for j in range(i, nfrg):
+            #FUDO| this should avoid double-counting, but it doesn't work right now, for whatever reason
+            #FU| we do not exclude i == j, because we set tmp = [] and we want the molecule itself, but it 
+            #FU| I re-included it, because otherwise we rely on zero being zero in comparison of float numbers (and I don't like that either)
+            for i in range(nfrg):
+                #tmp = []
+                tmp = [i]
+                for j in range(nfrg):
+                    if i == j:
+                        continue
+                    if frgdst[i,j] <= cutoff:
+                        tmp.append(j)
+    
+                tmp.sort()
+                if len(tmp) > eta:
+                    eta = len(tmp)
+    
+                prisub.append(tmp)
+                #print 'test: ' ,tmp
+    
+            prisub.sort()
+    
+        #FUDO| somehow change the routine above so that we don't need to include the below
+        #FUDO| it was done, because for maximum cutoff and all equal subsystems, all subsystems will get removed
+            doubles, prisub = self.remove_duplicates_lol(prisub)
+    
+        #remove small subsystems that are completely contained in bigger subsystems
+            tor = []
+            for i, s1 in enumerate(prisub):
+                for j, s2 in enumerate(prisub[i+1:]):
+    
+                    lc = list(set(s2).intersection(s1))
+    
+                    if (lc == s1):
+                        tor.append(s1)
+                    elif (lc == s2):
+                        tor.append(s2)
+    
+            for rem in tor:
+                prisub.remove(rem)
+        
+        else:
+
+            slute = []
+            slvnt = []
+
+            prisub = [[around_solute]]
+
+            for i in range(nfrg):
+                if frgdst[around_solute, i] <= cutoff:
+                    if i != around_solute:
+                        prisub[0].append(i)
+                else:
+                    prisub.append([i])
+
+            #prisub = []
+
+            #for i in range(nfrg):
+            #    if frgdst[around_solute, i] <= cutoff or i == around_solute:
+            #        #FUDO| check here if i == around_solute
+            #        #FUDO| check if both versions work!!!
+
+            #        #if i == around_solute:
+            #        #    prisub.append([around_solute])
+            #        #else:
+            #        #    prisub[around_solute].append(i)
+
+            #        try:
+            #            prisub[around_solute].append(i)
+            #        except:
+            #            prisub.append([around_solute])
+            #    else:
+            #        prisub.append([i])
+
+        print 'largest primitive subsys (in terms of \# fragments) has %i blocks in it' %eta
+
+        return prisub
+
+    def generate_subsystems(self, cutoff=3.0, prisub=None, frgchg=None, frgmlt=None, around_solute=None):
+        """Generate subsystems according to original GEBF literature. JPCA 114, 8126 (2010)
+           Currently only molecules are considered as basic building blocks, but extension to arbitrary
+           functional groups is straight forward. We then need to take care of capping atoms.
+           Further on, better distance search could be done, currently only checking for the center of mass of molecules.
+        """
+
+        frgs = self.fragments
+        nfrg = len(frgs)
+
+        #we can also provide externally the primary subsystems, these are not the fragments, but the initial collection of fragment-based subssytems
+        #FUDO| should we also set the self.prisub????
+        #FU| save the current primary subsystems, so we can check 'em later
+        if prisub is None:
+            prisub = self.generate_primary_subsystems(cutoff=cutoff, around_solute=around_solute)
+
+        eta = 0
+        for sub in prisub:
+            if len(sub) > eta:
+                eta = len(sub)
+
+    #FUDO| we should not have to do this:
+    #remove small subsystems that are completely contained in bigger subsystems
+        tor = []
+        for i, s1 in enumerate(prisub):
+            for j, s2 in enumerate(prisub[i+1:]):
+
+                lc = list(set(s2).intersection(s1))
+
+                if (lc == s1):
+                    tor.append(s1)
+                elif (lc == s2):
+                    tor.append(s2)
+
+        for rem in tor:
+            prisub.remove(rem)
+
+        print 'largest primitive subsys (in terms of \# fragments) has %i blocks in it' %eta
+
+    #FU| now compare fragments and remove obsolete ones
+        nsub = len(prisub)
+
+    #FUDO| we shouldn't have any duplicates if we have non-overlapping 'around_solute' case, but make it more general!!!
+        if len(prisub) > 1:
+
+            if around_solute is None:
+                list.sort()
+
+            doubles, prisub = self.remove_duplicates_lol(prisub)
+            print 'doubles: ', doubles
+
+        print 'primitive subsystems: '
+
+        for pri in prisub:
+            print pri
+        
+        sbs = prisub
+    #FUDO| moved this here, because otherwise we might have duplicates and the whole thing would be unsorted
+        self.curprisub = prisub
+    #FU| we set all coefficients of primary subsystems to 1.
+        cff = ones(len(sbs))
+
+    #FU| now all primitive subsystems should be unique
+    #FU| we can compare between all primitive subsystems to get the derivative subsystems
+    #FU| again, compare each and every one subsystem with all others... annoying (but also see JPCA 114, 8126 (2010))
+
+        dersub = []
+        dercoe = []
+
+    #FU| premature optimization is the root of all evil
+    #FU| so we will try to get the literal algorithm to work
+
+    #FU| checking for derivative subsystems, starting at eta - 1
+        wrketa = eta - 1
+
+    #FU| another way is to first look for all possible derivative subsystems, but not exactly how to do this straightforwardly with an ever-increasing list of possible subsytems
+
+        while wrketa > 0:
+            fndsth = False
+            sth = []
+
+            for i, s1 in enumerate(sbs):
+                for s2 in sbs[i+1:]:
+    
+                    tmp = list(set(s1).intersection(s2))
+
+                    lnlst = len(tmp)
+
+                    if lnlst == wrketa:
+                        fndsth = True
+                        sth.append(tmp)
+                    else:
+                        continue
+
+            newsbs = []
+            newcff = []
+
+            if not fndsth:
+                wrketa -= 1
+            else:
+    #FU| remove doubles in sth
+                if len(sth) > 1:
+                    sth.sort()
+                    bla, sth = self.remove_duplicates_lol(sth)
+
+                tmpc = []
+                for j, new in enumerate(sth):
+                    tmpc.append(1)
+                    for k, sub in enumerate(sbs):
+    #FUDO| this kinda sucks
+                        intr = list(set(new).intersection(sub))
+
+                        if len(intr) == wrketa:
+                            tmpc[j] -= cff[k]
+
+                    if tmpc[j] != 0:
+                        newsbs.append(sth[j])
+                        newcff.append(tmpc[j])
+                        print 'found new subsystem: ', sth[j], 'with coeff: ', tmpc[j]
+                    else:
+                        print 'found subsystem with 0 coeff: ', sth[j], tmpc[j]
+
+                if len(newsbs) > 0:
+                    for k, sub in enumerate(newsbs):
+                        sbs.append(sub)
+                        cff = append(cff, newcff[k])
+
+                wrketa -= 1
+
+        subsys= []
+
+    #FUDO| we don't need to use self.fragments here, we can better use a local variable
+
+        print 'all subsystems expressed in atoms:'
+
+    #FU| here we (temporarily) now also calculate the total charges and multiplicities of our subsystems
+        subsysmlt = []
+
+        for sub in sbs:
+            nprd = 0
+            for frg in sub:
+                tmp = ( frgmlt[frg] - 1 ) / 2.
+                nprd += tmp
+
+    #FUDO| check if this is correct (because of the integer conversion)
+    #FUDO| it is correct, but assumes high-spin configuration
+    #FUDO| maybe add possibility for low-spin configuration
+            subsysmlt.append(int(2*nprd+1))
+
+        subsyschg = []
+
+        for sub in sbs:
+            tmp = 0
+            for frg in sub:
+                tmp += frgchg[frg]
+
+            subsyschg.append(tmp)
+
+    #FUDO| maybe find some nicer variable names here
+        for i, mols in enumerate(sbs):
+            subsys.append([])
+            for mol in mols:
+                for j in frgs[mol]:
+                    subsys[i].append(j)
+
+            syms = self.atoms.get_chemical_symbols()
+            atcp = self.atoms.copy()
+
+            xat = [elem for k, elem in enumerate(range(len(self.atoms))) if k not in subsys[i]]
+
+            for x in xat:
+                syms[x] = 'X'
+
+            atcp.set_chemical_symbols(syms)
+
+            write(self.label + 'frag-%i.xyz' %i, atcp)
+
+            print subsys[i]
+
+        coeffs = cff
+        savetxt(self.label + 'coefficients.dat', coeffs)
+
+        return coeffs, subsys, subsyschg, subsysmlt
+
+    def run(self, atoms=None, gradients=False):
+
+        if (self.subsys is None) or (self.subsys == []):
+            print "Something is wrong, no subsystems defined"
+            #printf("Something is wrong, no subsystems defined\n")
+            exit ( 1 )
+
+    #FU| get initial charges, energies
+        itr = 0
+
+    #FU| this is only an initial attempt at getting forces, there is probably a nicer way
+
+    #FUDO| forces are actually a bit more complicated. We will do the most non-complicated way here
+    #FUDO| get only the forces on the QM atoms in each subsystem, put them in one big array and then add them all up
+
+        if gradients:
+            charges, energies, tmpfrc = self.one_iteration(atoms=atoms, dobqs=False, gradients=gradients, chgs=self.subsyschg, mlts=self.subsysmlt)
+        else:
+            charges, energies = self.one_iteration(atoms=atoms, dobqs=False, gradients=gradients, chgs=self.subsyschg, mlts=self.subsysmlt)
+
+    #FU| unit conversion
+    #FUDO| remove in later version
+        energies /= Ha
+
+        if gradients:
+            tmpfrc /= (Ha / Bohr)
+            forces = zeros((len(atoms),3))
+
+            for k in range(len(self.subsys)):
+                forces += self.coeffs[k] * tmpfrc[k,:,:]
+
+        if self.plvl > 0:
+            stdout.write('\n')
+
+        atoms.set_array('charges', charges)
+        
+        savetxt(self.label + 'initial-charges.dat', charges, fmt='%21.10f')
+        savetxt(self.label + 'initial-energies.dat', energies, fmt='%21.10f')
+        if gradients:
+            savetxt(self.label + 'initial-forces.dat', forces, fmt='%21.10f')
+
+            for i, subsys in enumerate(self.subsys):
+                savetxt(self.label + 'initial-forces-subsys-%i.dat' %i, tmpfrc[i,:,:], fmt='%21.10f')
+
+        converged = False
+
+        tmpen = (energies * self.coeffs).sum()
+        totnr = [tmpen]
+
+        if self.plvl > 0:
+            stdout.write("Energy without surrounding point charges: %21.10f\n" %totnr[itr])
+
+    #FU| careful, if we only have one subsystem (for whatever reason), we can just put converged to true
+
+        if len(self.subsys) == 1:
+            print 'only found one subsystem, so we are done!'
+            converged = True
+
+        #os.system('rm inpsubsys-*')
+        while not converged:
+
+            if self.plvl > 0:
+                stdout.write('\n')
+
+            if gradients:
+                nchg, nenr, tmpfrc = self.one_iteration(atoms=atoms, gradients=gradients, chgs=self.subsyschg, mlts=self.subsysmlt)
+            else:
+                nchg, nenr = self.one_iteration(atoms=atoms, gradients=gradients, chgs=self.subsyschg, mlts=self.subsysmlt)
+
+    #FU| convert to a.u., because ASE returns eV
+    #FUDO| change back, because will be internally inconsistent with ASE, but need it now, for double-checking
+            nenr /= Ha
+
+            if gradients:
+                tmpfrc /= (Ha / Bohr)
+                nfrc = zeros((len(atoms),3))
+                for k, subsys in enumerate(self.subsys):
+                    savetxt(self.label + 'forces-%i-subsys-%i.dat' %(itr,k), tmpfrc[k,:,:], fmt='%21.10f')
+                    nfrc += self.coeffs[k] * tmpfrc[k,:,:]
+
+    #FUDO| probably need to convert forces as well, but need to check appropriate units first
+
+    #FU| just the sum of the energies of primitive and derivative fragments
+            tmpen = (self.coeffs * nenr).sum()
+
+    #FU| self-energy correction (depends on calculator at hand) it is actually not tested right now, because NWChem does not need it
+
+            if self.selfenercorr:
+                slfnr = self.get_mm_self_energy(atoms, charges)
+                if self.plvl > 0:
+                    stdout.write('self-energy of point charges: %21.10f\nWhich appears %i times\n' %(slfnr, self.coeffs.sum()-1))
+            else:
+                slfnr = 0.
+                if self.plvl > 0:
+                    stdout.write('no self-energy correction for point charges applied\n')
+
+    #FU| for some reason we will do this here, maybe we can puch something else into slfnr later
+    #FUDO|
+            tmpen -= (self.coeffs.sum()-1) * slfnr
+
+            totnr.append(tmpen)
+
+            totdel = totnr[-1] - totnr[itr]
+
+            if self.plvl > 0:
+                stdout.write('total energy in iteration %i: %21.10f\n' %(itr, totnr[-1]))
+
+            dchg = nchg - charges
+            denr = nenr - energies
+            if gradients:
+                dfrc = nfrc - forces
+
+    #perform additional checks here, whether change in all energies and in all charges is smaller than convergence criterion
+
+            energies = nenr
+            charges = nchg
+
+            if gradients:
+                forces = nfrc
+
+            atoms.set_array('charges', charges)
+
+            savetxt(self.label + 'charges-%i.dat' %itr, charges, fmt='%21.10f')
+            savetxt(self.label + 'energies-%i.dat' %itr, energies, fmt='%21.10f')
+            if gradients:
+                savetxt(self.label + 'forces-%i.dat' %itr, forces, fmt='%21.10f')
+
+    #FU| convergence checks, we could also add individual check for subsystem energies
+            if (abs(totdel) < 1.e-6) and all(abs(dchg) < 1.e-4):
+                if gradients:
+                    if np.all(abs(dfrc) < 1.e-6):
+                        converged = True
+                else:
+                    converged = True
+
+            itr += 1
+
+            continue
+
+        #if gradients:
+        #    self.results['forces'] = -array(forces) * Ha / Bohr
+
+        #FUDO| correctly set the energies here as well
+        if self.plvl > 0:
+            stdout.write('\nFinal total energy: %21.10f\n' %(totnr[-1]))
+
+    #FUDO| make that available in a full calculator object
+        self.results['energy'] = totnr[-1] * Ha
+        self.results['charges'] = charges
+
+    #FUDO| somehow make it work, that we get the charges later on also without re-calculating everything
+        #atoms.set_initial_charges(charges)
+
+    #FUDO| check units below
+        if gradients:
+            self.results['forces'] = -array(forces) * Ha / Bohr
+
+    #FUMPORTANT| if this is included the whole thing works like a charm, if atoms and not self.atoms is passed in GEBF.calculate
+        #self.atoms.set_initial_charges(self.results['charges'])
+
+    def one_iteration(self, atoms=None, dobqs=True, gradients=False, chgs=None, mlts=None):
+
+        #FUDO| figure out if we need to really copy the calculator or if we can just pass it?!
+        #calc = self.subsyscalc.copy()
+        #calc = atoms.get_calculator()
+
+        nsub = len(self.subsys)
+
+        if chgs is None:
+            chgs = np.zeros(nsub)
+
+        if mlts is None:
+            mlts = np.ones(nsub)
+
+        calc = deepcopy(self.subsyscalc)
+
+        if gradients:
+            calc.parameters['task'] = 'gradient'
+        else:
+            calc.parameters['task'] = 'energy'
+
+        if dobqs:
+            ochg = atoms.get_array('charges')
+
+        charges = zeros(len(atoms))
+        energies = zeros(len(self.subsys))
+        forces = zeros((nsub, len(atoms), 3))
+    
+        for i, subsys in enumerate(self.subsys):
+    #FUDO| option for this needed?
+        #    os.system('rm inpsubsys-*')
+
+    #FU| get indices of all that is not in subsys (works, checked it)
+    #FU| and set the charges correspondingly
+    #FUDO| check how general these parameters are to other calculators (if we'll ever use them)
+            if dobqs:
+                bqs = [elem for k, elem in enumerate(range(len(atoms))) if k not in subsys]
+                calc.parameters.bq = append(atoms.positions[bqs], transpose(array(ochg[bqs], ndmin=2)), axis=1)
+
+            calc.set_label(self.label + 'inpsubsys-%i' %i)
+            calc.parameters['charge'] =  chgs[i]
+            calc.parameters['mult'] = mlts[i]
+
+    #FU| create temporary atoms object which contains only the subsystems
+    #FU| and attach calculator
+
+            tmpat = atoms[subsys].copy()
+            tmpat.set_calculator(calc)
+
+    #FU| this is not really needed, because it is done in order to get charges anyway
+            #tmpat.get_potential_energy()
+    #FU| assign new charges to final array with correct indices
+            charges[subsys] = tmpat.get_charges()
+
+            energies[i] = tmpat.get_potential_energy()
+            
+            if gradients:
+                forces[i,subsys,:] = tmpat.get_forces()
+
+    #FU| check how we set labels, it seems to converge quicker, but also to slightly different energies
+            #system('rm -rf nwchem.*')
+            if self.plvl > 0:
+                stdout.flush()
+                stdout.write(' %i / %i done\r' %(i+1, nsub))
+        
+        if self.plvl > 0:
+            stdout.write('\n')
+        
+        if gradients:
+        #FUDO| could also always return forces, but create arrays of zeros that does not get updated, this would remove a lot of the if statements...
+            return charges, energies, forces
+        else:
+            return charges, energies
+
+    def get_mm_self_energy(self, atoms, charges):
+        """calculate self-energy of the mm charges"""
+
+        #we could do this here also with the atoms object
+
+        numchg = len(charges)
+        numatm = len(atoms)
+
+        if numatm != numchg:
+            print  "Number of charges and atoms not the same, cannot continue"
+            #printf("Number of charges and atoms not the same, cannot continue\n")
+            exit ( 1 )
+
+        slfnr = 0.
+
+    #check here, we need to reset distmat if we are doing more than only one GEBF run, e.g., for an MD run
+    #FUDO| this is not perfect, because it demands, that self.atoms exists
+        if self.distmat is None:
+            self.distmat = atoms.get_distances_all()
+
+            #self.distmat = zeros((numchg, numchg))
+            #for i in range(numchg):
+            #    for j in range(i+1, numchg):
+            #        self.distmat[i,j] = atoms.get_distance(i, j)
+            #        #distmat[j,i] = distmat[i,j]
+
+        for i in range(numchg):
+            for j in range(i+1, numchg):
+                rij = self.distmat[i, j]
+                #tmp = (charges[i] * charges[j]) # * u._e**2 / ( 4 * pi * u._eps0 )
+
+                slfnr += ( charges[i] * charges[j] ) / rij * Bohr
+
+                #this should be correct for atomic units
+
+        return slfnr
+
+    def remove_duplicates_lol(self, list):
+
+        #FUDO| find an efficient way without sorting the list to remove duplicates
+        #FUDO| we currently still need to sort the list, so that duplicates will come after another
+        #FUDO| but we can create a duplicate list first and bla bla bla
+        #although we do sort the list in the code above, we wanna be sure, that nothing goes wrong
+        #FUDO| i removed this here, because it screws up the around_solute code
+
+        duplicates = True
+        cnt = 0
+        cntprv = cnt-1
+        uniq = []
+
+        dblcnt = []
+
+    #the loop below will break if we only have one atom fragments
+
+        #print 'removal routine'
+        #print list
+
+        while duplicates:
+
+            #print 'loop start: ', cnt, cnt+2, len(list)
+            #here, it should be cnt+2, because we need to be able to access the element cnt+1
+            if cnt+2 == len(list):
+                #print 'We reached the end'
+                duplicates = False
+
+            if list[cnt] == list[cnt+1]:
+                list.remove(list[cnt])
+                #print 'counts: ', cnt, cntprv
+                if cntprv == cnt:
+                    #print cnt, len(dblcnt)
+                    dblcnt[cnt] += 1
+                    #print 'doubles: ', dblcnt
+                else:
+                    dblcnt.append(2)
+                    cntprv = cnt
+                    #print 'double count: ', dblcnt
+
+            else:
+                #print 'hello'
+                dblcnt.append(1)
+                cntprv = cnt
+                cnt += 1
+
+        #print dblcnt
+        return dblcnt, list
+
+#FU| we need the following methods:
+
+    def calculate(self, atoms=None, properties=['energy'],
+                  system_changes=all_changes):
+        """GEBF Calculator
+        """
+
+        Calculator.calculate(self, atoms, properties, system_changes)
+
+        if len(system_changes) > 0:  # something wrong with this way
+            self.update(self.atoms)
+            if 'energy' in properties:
+                self.calculate_energy(self.atoms)
+
+            if 'forces' in properties:
+                self.calculate_forces(self.atoms)
+
+            if 'charges' in properties:
+                self.calculate_charges(self.atoms)
+
+        # check we have all the properties requested
+        for property in properties:
+            if property not in self.results:
+                if property is 'energy':
+                    self.calculate_energy(self.atoms)
+
+                if property is 'forces':
+                    self.calculate_forces(self.atoms)
+
+                if property is 'charges':
+                    self.calculate_charges(self.atoms)
+
+#FUMPORTANT|
+        atoms.set_initial_charges(self.results['charges'])
+#FUNOMATTER|
+        #self.atoms.set_initial_charges(self.results['charges'])
+
+    def calculate_energy(self, atoms):
+        self.run(atoms, gradients=False)
+
+    def calculate_forces(self, atoms):
+        self.run(atoms, gradients=True)
+
+    def calculate_charges(self, atoms):
+        self.calculate_energy(atoms)
+
+    def update(self, atoms):
+        self.pbc = atoms.get_pbc()
+        os.system('rm inpsubsys-*')
+
+    #FU| the primary subsystems are determined by the cutoff, the derivative subsystems are defined by the primary subsystems
+    #FU| so only need to the check the primary subsystems
+        if self.prisub is None:
+            prisub = self.generate_primary_subsystems(cutoff=3.0, around_solute=self.around_solute)
+
+            if prisub != self.curprisub:
+                self.coeffs, self.subsys, self.subsyschg, self.subsysmlt = self.update_subsystems(cutoff=self.cutoff, prisub=self.prisub, frgchg=self.frgchg, frgmlt=self.frgmlt, around_solute=self.around_solute)
+
+    def set_atoms(self, atoms):
+        if (atoms != self.atoms):
+            self.converged = None
+
+        self.atoms = atoms.copy()
+
+        #atoms.set_array('charges', atoms.get_initial_charges())
+        #self.atoms.set_array('charges', atoms.get_initial_charges())
+
+    #FUDO| we might also need to update the actual subsystem definitions (completely)
+    #FUDO| to this end split "generate_subsystems" into two functions. one for generation of primitive subsystems
+    #FUDO| and one for the generation of derivative subsystems
+#FUDO| we could include this function here from the original Calculator class, and make it remove 'initial_charges' from system_changes and substitute it by 
+#FUDO| the actual charges among things to check
+#    def check_state(self, atoms, tol=1e-15):
+#        """Check for system changes since last calculation."""
+#        if self.atoms is None:
+#            system_changes = all_changes
+#        else:
+#            system_changes = []
+#            if not equal(self.atoms.positions, atoms.positions, tol):
+#                system_changes.append('positions')
+#            if not equal(self.atoms.numbers, atoms.numbers):
+#                system_changes.append('numbers')
+#            if not equal(self.atoms.cell, atoms.cell, tol):
+#                system_changes.append('cell')
+#            if not equal(self.atoms.pbc, atoms.pbc):
+#                system_changes.append('pbc')
+#            if not equal(self.atoms.get_initial_magnetic_moments(),
+#                         atoms.get_initial_magnetic_moments(), tol):
+#                system_changes.append('initial_magmoms')
+#            if not equal(self.atoms.get_initial_charges(),
+#                         atoms.get_initial_charges(), tol):
+#                system_changes.append('initial_charges')
+#
+#        return system_changes
+
