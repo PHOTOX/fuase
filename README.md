@@ -1,2 +1,6 @@
-# fuase
-modified copy of repository at https://svn.fysik.dtu.dk/projects/ase/trunk
+==========
+Python ASE
+==========
+
+Webpage: http://wiki.fysik.dtu.dk/ase
+
