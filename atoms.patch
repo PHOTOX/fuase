@@ -1,33 +1,41 @@
-1029,1060d1028
-<     def get_gyration_tensor(self):
-<         '''Get the gyration tensor
-< 
-<         returns the eigenvalues of the gyration tensor (and not the sqrt's)
-<         '''
-<         
-<         com = self.get_center_of_mass()
-<         positions = self.get_positions()
-<         positions -= com  # translate center of mass to origin
-<         natoms = np.float(self.get_number_of_atoms())
-< 
-<         #initialize elements of the gyration tensor
-<         G11 = G22 = G33 = G12 = G13 = G23 = 0.0
-<         for i in range(len(self)):
-<             x, y, z = positions[i]
-< 
-<             G11 += (x**2) * 1. / natoms 
-<             G22 += (y**2) * 1. / natoms 
-<             G33 += (z**2) * 1. / natoms 
-<             G12 += x * y  * 1. / natoms 
-<             G13 += x * z  * 1. / natoms 
-<             G23 += y * z  * 1. / natoms 
-< 
-<         G = np.array([[G11, G12, G13],
-<                       [G12, G22, G23],
-<                       [G13, G23, G33]])
-< 
-<         evals, evecs = np.linalg.eig(G)
-<         evals.sort()
-< 
-<         return evals
-< 
+--- atoms.py	2015-10-06 13:58:40.425590000 +0200
++++ atoms.py	2015-10-06 14:01:35.199824014 +0200
+@@ -1062,6 +1062,38 @@
+         else:
+             return evals
+ 
++    def get_gyration_tensor(self):
++        '''Get the gyration tensor
++ 
++        returns the eigenvalues of the gyration tensor (and not the sqrt's)
++        '''
++        
++        com = self.get_center_of_mass()
++        positions = self.get_positions()
++        positions -= com  # translate center of mass to origin
++        natoms = np.float(self.get_number_of_atoms())
++ 
++        #initialize elements of the gyration tensor
++        G11 = G22 = G33 = G12 = G13 = G23 = 0.0
++        for i in range(len(self)):
++            x, y, z = positions[i]
++ 
++            G11 += (x**2) * 1. / natoms 
++            G22 += (y**2) * 1. / natoms 
++            G33 += (z**2) * 1. / natoms 
++            G12 += x * y  * 1. / natoms 
++            G13 += x * z  * 1. / natoms 
++            G23 += y * z  * 1. / natoms 
++ 
++        G = np.array([[G11, G12, G13],
++                      [G12, G22, G23],
++                      [G13, G23, G33]])
++ 
++        evals, evecs = np.linalg.eig(G)
++        evals.sort()
++ 
++        return evals
++ 
+     def get_angular_momentum(self):
+         """Get total angular momentum with respect to the center of mass."""
+         com = self.get_center_of_mass()
