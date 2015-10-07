@@ -38,7 +38,7 @@ cutoff = 0.0
 neu_label = 'large-cut_neutral_'
 
 for basis in ['STO-3G', '6-31G*']:
-    for xc in ['PBE', 'BHHLYP'] :
+    for xc in ['PBE', 'BHandHLYP'] :
         #### neutral #####
         
         calc = ORCA(xc=xc, basis=basis, charges=charges, raw=raw)
