@@ -25,7 +25,7 @@ class KPoint:
 
 class GAMESS_US(FileIOCalculator):
     implemented_properties = ['energy', 'forces', 'dipole', 'magmom', 'charges', 'polarizability']
-    command = 'rungms PREFIX.inp 2014 > PREFIX.out'
+    command = 'rungms PREFIX.inp 2015 > PREFIX.out'
 
     default_parameters = dict(
         xc='SVWN', #Slater exchange plus VWN5 correlation
