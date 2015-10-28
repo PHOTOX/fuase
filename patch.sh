@@ -4,7 +4,7 @@ OWD=`pwd`
 ASEDIR=/scratch/fuhlig/opt/ase/trunk/ase
 
 cp calculators/{gebf.py,orca.py,nwchem.py,gamess_us.py} ${ASEDIR}/calculators/
-cp io/qxyz.py ${ASEDIR}/io/
+cp io/{orca.py,gamess_us.py,nwchem.py,qxyz.py} ${ASEDIR}/io/
 
 cd ${ASEDIR}
 patch -p0 <${OWD}/atoms.patch
